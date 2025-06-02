@@ -75,12 +75,12 @@ class RobotEnv:
         for i in self.joint_indices:
             p.resetJointState(self.robotId, i, targetValue=0, targetVelocity=0)
 
-            # p.setJointMotorControl2(
-            # bodyIndex=self.robotId,
-            # jointIndex=i,
-            # controlMode=p.VELOCITY_CONTROL,
-            # force=0  # 禁用默认电机
-            # )
+            p.setJointMotorControl2(
+            bodyIndex=self.robotId,
+            jointIndex=i,
+            controlMode=p.VELOCITY_CONTROL,
+            force=0  # 禁用默认电机
+            )
         
         # 获取初始观测
         self.last_action = np.zeros(self.action_dim)  # 初始化上一次动作缓存
@@ -100,7 +100,9 @@ class RobotEnv:
             )
         
         # 执行一步物理模拟
+        # print("Before stepSimulation")
         p.stepSimulation()
+        # print("After stepSimulation")
         
         # 获取新的观测
         observation = self._get_observation()
@@ -122,17 +124,20 @@ class RobotEnv:
         # 获取躯干位置（y和z方向）
         position, _ = p.getBasePositionAndOrientation(self.robotId)
         pos_y, pos_z = position[1], position[2]
+        # print(f"pos_y: {pos_y}, pos_z: {pos_z}")
         
         # 获取躯干速度（x,y,z）和角速度
         linear_velocity, angular_velocity = p.getBaseVelocity(self.robotId)
         vel_x, vel_y, vel_z = linear_velocity
         ang_vel_x, ang_vel_y, ang_vel_z = angular_velocity
+        # print(f"vel_x: {vel_x}, vel_y: {vel_y}, vel_z: {vel_z}")
         
         # 获取躯干旋转角度
         # 注意：PyBullet返回四元数，需要转换为欧拉角
         _, orientation = p.getBasePositionAndOrientation(self.robotId)
         euler_angles = p.getEulerFromQuaternion(orientation)
         roll, pitch, yaw = euler_angles
+        # print(f"roll: {roll}, pitch: {pitch}, yaw: {yaw}")
         
         # 组合旋转角度和角速度
         rotation_state = [roll, pitch, yaw] + list(angular_velocity)
@@ -142,6 +147,7 @@ class RobotEnv:
         for i in self.joint_indices:
             joint_pos, joint_vel, _, _ = p.getJointState(self.robotId, i)
             joint_states.extend([joint_pos, joint_vel])
+            # print(f"Joint {i} pos: {joint_pos}, vel: {joint_vel}")
         
         # 获取脚与地面的接触力
         foot_contacts = [0.0] * len(self.foot_joint_indices)
@@ -151,6 +157,7 @@ class RobotEnv:
             for i, foot_idx in enumerate(self.foot_joint_indices):
                 if contact_joint_idx == foot_idx:
                     foot_contacts[i] = contact[9]  # 法向力
+                    # print(f"Foot {i} contact force: {foot_contacts[i]}")
                     break
         
         # 组合所有观测
@@ -158,28 +165,38 @@ class RobotEnv:
         
         return np.array(observation, dtype=np.float32)
     
+    def set_reward_weights(self, energy_weight, path_weight):
+        # 设置奖励函数中的惩罚权重
+        self.energy_weight = energy_weight
+        self.path_weight = path_weight
+
     def _calculate_reward(self, observation, action):
         # 奖励函数设计，这里需要根据任务目标进行调整
         vel_x = observation[2]  # 躯干x方向速度
         pos_y = observation[0]  # 躯干y方向位置（希望保持在0附近）
         pos_z = observation[1]  # 躯干z方向位置（希望保持在合适高度）
         
+        # 基础奖励：
+        base_reward = 0.0625   #0.0625
+
         # 主要奖励：向前移动速度
         forward_reward = vel_x
         
         # 惩罚：偏离中心线
-        center_penalty = -abs(pos_y) * 0.1
+        path_penalty = -self.path_weight * pos_y ** 2
+
+        # 惩罚：躯干高度过低
+        height_penalty = -50 * (pos_z - 0.5) ** 2
+
+        # 惩罚：能量消耗
+        action_magnitude = np.sum(np.square(action))
+        energy_penalty = -self.energy_weight * action_magnitude
         
         # 惩罚：摔倒
-        fall_penalty = 0
-        if pos_z < 0.3:  # 如果躯干高度过低，认为摔倒
-            fall_penalty = -10
-        
-        # 惩罚：过大的动作
-        action_penalty = -np.sum(np.square(action)) * 0.01
+        fall_penalty = 0 if pos_z >= 0.3 else -5  # 如果躯干高度过低，认为摔倒
         
         # 总奖励
-        reward = forward_reward + center_penalty + fall_penalty + action_penalty
+        reward = base_reward + forward_reward #+ path_penalty + energy_penalty + height_penalty + fall_penalty
         
         return reward
     
