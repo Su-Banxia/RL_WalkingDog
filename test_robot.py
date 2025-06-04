@@ -23,6 +23,8 @@ def test_robot_with_trained_model(total_steps=2000, render=True, slow_down_facto
     # 重置环境
     observation = env.reset()
 
+    env.set_phase(2)
+
     # 执行动作并观察结果
     for step in range(total_steps):
         # 使用训练好的模型选择动作（评估时不添加噪声）

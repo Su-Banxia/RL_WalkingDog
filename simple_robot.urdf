@@ -22,11 +22,11 @@
     </collision>
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="5.0"/>
+      <mass value="1.5"/>
       <inertia 
-        ixx="0.02" ixy="0.0" ixz="0.0" 
-        iyy="0.04" iyz="0.0" 
-        izz="0.03"/>
+        ixx="0.006" ixy="0.0" ixz="0.0" 
+        iyy="0.012" iyz="0.0" 
+        izz="0.009"/>
     </inertial>
   </link>
 
@@ -106,6 +106,17 @@
       <geometry>
         <box size="0.15 0.10 0.02"/> <!-- 加宽脚部以提高稳定性 -->
       </geometry>
+      <surface>
+        <friction>
+          <lateral_friction value="5.0"/>  <!-- 增加横向摩擦系数 -->
+          <friction_2 value="4.0"/>        <!-- 设置纵向摩擦系数 -->
+          <friction_anchor value="1"/>     <!-- 启用各向异性摩擦 -->
+        </friction>
+        <contact>
+          <contact_damping value="100"/>    <!-- 增加接触阻尼 -->
+          <contact_stiffness value="2000"/> <!-- 增加接触刚度 -->
+        </contact>
+      </surface>
     </collision>
     <inertial>
       <origin xyz="0 0 -0.01" rpy="0 0 0"/>
@@ -182,7 +193,7 @@
     <visual>
       <origin xyz="0 0 -0.01" rpy="0 0 0"/>
       <geometry>
-        <box size="0.15 0.10 0.02"/> <!-- 加宽脚部以提高稳定性 -->
+        <box size="0.15 0.10 0.02"/> 
       </geometry>
       <material name="black">
         <color rgba="0.1 0.1 0.1 1.0"/>
@@ -191,8 +202,19 @@
     <collision>
       <origin xyz="0 0 -0.01" rpy="0 0 0"/>
       <geometry>
-        <box size="0.15 0.10 0.02"/> <!-- 加宽脚部以提高稳定性 -->
+        <box size="0.15 0.10 0.02"/> 
       </geometry>
+      <surface>
+        <friction>
+          <lateral_friction value="5"/>  <!-- 增加横向摩擦系数 -->
+          <friction_2 value="4.0"/>        <!-- 设置纵向摩擦系数 -->
+          <friction_anchor value="1"/>     <!-- 启用各向异性摩擦 -->
+        </friction>
+        <contact>
+          <contact_damping value="100"/>    <!-- 增加接触阻尼 -->
+          <contact_stiffness value="2000"/> <!-- 增加接触刚度 -->
+        </contact>
+      </surface>
     </collision>
     <inertial>
       <origin xyz="0 0 -0.01" rpy="0 0 0"/>
@@ -214,7 +236,7 @@
     <child link="left_upper_leg"/>
     <origin xyz="0 0.075 -0.075" rpy="0 0 0"/> <!-- 调整髋关节位置，降低高度 -->
     <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="50" velocity="1.0"/>
+    <limit lower="-1.57" upper="1.57" effort="80" velocity="2.0"/>
   </joint>
 
   <!--  Left Knee Joint  -->
@@ -223,7 +245,7 @@
     <child link="left_lower_leg"/>
     <origin xyz="0 0 -0.25" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="0" upper="2.0" effort="50" velocity="1.0"/>
+    <limit lower="0" upper="2.0" effort="80" velocity="2.0"/>
   </joint>
 
   <!--  Left Ankle Joint  -->
@@ -232,7 +254,7 @@
     <child link="left_foot"/>
     <origin xyz="0 0 -0.25" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-0.5" upper="0.5" effort="30" velocity="1.0"/>
+    <limit lower="-0.5" upper="0.5" effort="48" velocity="2.0"/>
   </joint>
 
   <!--  Right Hip Joint  -->
@@ -241,7 +263,7 @@
     <child link="right_upper_leg"/>
     <origin xyz="0 -0.075 -0.075" rpy="0 0 0"/> <!-- 调整髋关节位置，降低高度 -->
     <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="50" velocity="1.0"/>
+    <limit lower="-1.57" upper="1.57" effort="80" velocity="2.0"/>
   </joint>
 
   <!--  Right Knee Joint  -->
@@ -250,7 +272,7 @@
     <child link="right_lower_leg"/>
     <origin xyz="0 0 -0.25" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="0" upper="2.0" effort="50" velocity="1.0"/>
+    <limit lower="0" upper="2.0" effort="80" velocity="2.0"/>
   </joint>
 
   <!--  Right Ankle Joint  -->
@@ -259,7 +281,7 @@
     <child link="right_foot"/>
     <origin xyz="0 0 -0.25" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-0.5" upper="0.5" effort="30" velocity="1.0"/>
+    <limit lower="-0.5" upper="0.5" effort="48" velocity="2.0"/>
   </joint>
 
 </robot>

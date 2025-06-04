@@ -11,6 +11,8 @@ def main():
     parser.add_argument('--evaluate', action='store_true', help='Evaluate the trained agent')
     parser.add_argument('--timesteps', type=int, default=1000000, help='Total training timesteps')
     parser.add_argument('--render', action='store_true', help='Render the environment during evaluation')
+    parser.add_argument('--load_actor', type=str, default=None, help='Path to pre-trained actor .pth')
+    parser.add_argument('--load_critic', type=str, default=None, help='Path to pre-trained critic .pth')
     args = parser.parse_args()
 
     # 创建机器人环境
@@ -19,7 +21,10 @@ def main():
     if args.train:
         # 训练模型
         print(f"开始训练DDPG代理，总时间步: {args.timesteps}")
-        agent = train_ddpg(env, total_timesteps=args.timesteps)
+        agent = train_ddpg(env, 
+                           total_timesteps=args.timesteps,
+                           load_actor_path=args.load_actor,
+                           load_critic_path=args.load_critic)
         print("训练完成！模型已保存为 robot_walking_ddpg_actor.pth 和 robot_walking_ddpg_critic.pth")
 
     if args.evaluate:

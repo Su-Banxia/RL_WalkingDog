@@ -5,6 +5,7 @@ import numpy as np
 import gym
 from collections import deque, namedtuple
 import random
+import os
 
 # 经验回放缓冲区
 Experience = namedtuple('Experience', ('state', 'action', 'reward', 'next_state', 'done'))
@@ -24,7 +25,7 @@ class ReplayBuffer:
 
 # 演员网络（策略网络）
 class ActorNetwork(nn.Module):
-    def __init__(self, obs_dim, action_dim, hidden_dim=256):
+    def __init__(self, obs_dim, action_dim, hidden_dim=512): # TODO:
         super(ActorNetwork, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
@@ -40,7 +41,7 @@ class ActorNetwork(nn.Module):
 
 # 评论家网络（价值网络）
 class CriticNetwork(nn.Module):
-    def __init__(self, obs_dim, action_dim, hidden_dim=256):
+    def __init__(self, obs_dim, action_dim, hidden_dim=512): # TODO:
         super(CriticNetwork, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(obs_dim + action_dim, hidden_dim),
@@ -56,9 +57,9 @@ class CriticNetwork(nn.Module):
 
 # DDPG代理（使用高斯噪声）
 class DDPG:
-    def __init__(self, obs_dim, action_dim, lr_actor=1e-4, lr_critic=1e-3, 
-                 gamma=0.99, tau=0.001, buffer_size=1000000, batch_size=64,
-                 noise_scale=0.2, noise_decay=0.999, min_noise_scale=0.03):        
+    def __init__(self, obs_dim, action_dim, lr_actor=5e-4, lr_critic=5e-3, 
+                 gamma=0.95, tau=0.001, buffer_size=1000000, batch_size=256,
+                 noise_scale=0.5, noise_decay=0.9995, min_noise_scale=0.3):   # TODO  
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
 
@@ -159,10 +160,23 @@ class DDPG:
         self.replay_buffer.push(state, action, reward, next_state, done)
 
 # 训练函数
-def train_ddpg(env, total_timesteps=1000000):
+def train_ddpg(env, total_timesteps=1000000, load_actor_path=None, load_critic_path=None):
     obs_dim = env.obs_dim
     action_dim = env.action_dim
     agent = DDPG(obs_dim, action_dim)
+
+    # —— 如果指定了已有模型路径且文件存在，就加载参数 —— #
+    if load_actor_path is not None and os.path.isfile(load_actor_path):
+        agent.actor.load_state_dict(torch.load(load_actor_path, map_location=agent.device))
+        agent.actor_target.load_state_dict(torch.load(load_actor_path, map_location=agent.device))
+        print(f"Loaded actor parameters from {load_actor_path}")
+    if load_critic_path is not None and os.path.isfile(load_critic_path):
+        agent.critic.load_state_dict(torch.load(load_critic_path, map_location=agent.device))
+        agent.critic_target.load_state_dict(torch.load(load_critic_path, map_location=agent.device))
+        print(f"Loaded critic parameters from {load_critic_path}")
+    if load_actor_path is None and load_critic_path is None:
+        print("No pre-trained model found, starting training from scratch.")
+
     
     episode_rewards = deque(maxlen=100)
     timestep = 0
@@ -171,16 +185,15 @@ def train_ddpg(env, total_timesteps=1000000):
     state = env.reset()
 
     episode_reward = 0
-    episode_steps = 0
     
     while timestep < total_timesteps:
-        if episode < 500:
-            env.set_reward_weights(0.0, 0.0)  # 阶段1：无能量和路径惩罚
-        elif 500 <= episode < 1000:
-            env.set_reward_weights(0.005, 0.5)  # 阶段2：50%权重
-        else:
-            env.set_reward_weights(0.01, 1.0)  # 阶段3：全权重
-
+        # if episode < 3500:
+        #     env.set_phase(2)
+        # elif 3500 <= episode < 6000:
+        #     env.set_phase(2)
+        # else:
+        #     env.set_phase(2)
+        env.set_phase(2)
         # 选择和执行动作
         action = agent.select_action(state)
         next_state, reward, done, _ = env.step(action)
