@@ -8,7 +8,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <box size="0.15 0.15 0.15"/>
+        <box size="0.17 0.17 0.15"/>
       </geometry>
       <material name="gray">
         <color rgba="0.2 0.2 0.2 1.0"/>
@@ -17,16 +17,16 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <box size="0.10 0.20 0.30"/>
+        <box size="0.17 0.17 0.15"/>
       </geometry>
     </collision>
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="1.5"/>
+      <mass value="2.0"/>
       <inertia 
-        ixx="0.006" ixy="0.0" ixz="0.0" 
-        iyy="0.012" iyz="0.0" 
-        izz="0.009"/>
+        ixx="0.008" ixy="0.0" ixz="0.0" 
+        iyy="0.016" iyz="0.0" 
+        izz="0.012"/>
     </inertial>
   </link>
 
@@ -95,7 +95,7 @@
     <visual>
       <origin xyz="0 0 -0.01" rpy="0 0 0"/>
       <geometry>
-        <box size="0.15 0.10 0.02"/> <!-- 加宽脚部以提高稳定性 -->
+        <box size="0.20 0.10 0.02"/> <!-- 加宽脚部以提高稳定性 -->
       </geometry>
       <material name="black">
         <color rgba="0.1 0.1 0.1 1.0"/>
@@ -104,17 +104,15 @@
     <collision>
       <origin xyz="0 0 -0.01" rpy="0 0 0"/>
       <geometry>
-        <box size="0.15 0.10 0.02"/> <!-- 加宽脚部以提高稳定性 -->
+        <box size="0.20 0.10 0.02"/> <!-- 加宽脚部以提高稳定性 -->
       </geometry>
       <surface>
         <friction>
-          <lateral_friction value="5.0"/>  <!-- 增加横向摩擦系数 -->
-          <friction_2 value="4.0"/>        <!-- 设置纵向摩擦系数 -->
-          <friction_anchor value="1"/>     <!-- 启用各向异性摩擦 -->
+          <lateral_friction value="1.2"/>  <!-- 增加横向摩擦系数 -->
         </friction>
         <contact>
-          <contact_damping value="100"/>    <!-- 增加接触阻尼 -->
-          <contact_stiffness value="2000"/> <!-- 增加接触刚度 -->
+          <contact_damping value="1.0"/>    <!-- 增加接触阻尼 -->
+          <contact_stiffness value="10000"/> <!-- 增加接触刚度 -->
         </contact>
       </surface>
     </collision>
@@ -193,7 +191,7 @@
     <visual>
       <origin xyz="0 0 -0.01" rpy="0 0 0"/>
       <geometry>
-        <box size="0.15 0.10 0.02"/> 
+        <box size="0.20 0.10 0.02"/> 
       </geometry>
       <material name="black">
         <color rgba="0.1 0.1 0.1 1.0"/>
@@ -202,17 +200,15 @@
     <collision>
       <origin xyz="0 0 -0.01" rpy="0 0 0"/>
       <geometry>
-        <box size="0.15 0.10 0.02"/> 
+        <box size="0.20 0.10 0.02"/> 
       </geometry>
       <surface>
         <friction>
-          <lateral_friction value="5"/>  <!-- 增加横向摩擦系数 -->
-          <friction_2 value="4.0"/>        <!-- 设置纵向摩擦系数 -->
-          <friction_anchor value="1"/>     <!-- 启用各向异性摩擦 -->
+          <lateral_friction value="1.2"/>  <!-- 增加横向摩擦系数 -->
         </friction>
         <contact>
-          <contact_damping value="100"/>    <!-- 增加接触阻尼 -->
-          <contact_stiffness value="2000"/> <!-- 增加接触刚度 -->
+          <contact_damping value="1.0"/>    <!-- 增加接触阻尼 -->
+          <contact_stiffness value="10000"/> <!-- 增加接触刚度 -->
         </contact>
       </surface>
     </collision>

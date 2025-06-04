@@ -8,3 +8,5 @@ dist/
 robot_walking_ddpg_actor.pth
 robot_walking_ddpg_critic.pth
 gif/
+trained_models/
+Network/

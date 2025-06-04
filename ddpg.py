@@ -13,19 +13,19 @@ Experience = namedtuple('Experience', ('state', 'action', 'reward', 'next_state'
 class ReplayBuffer:
     def __init__(self, capacity):
         self.memory = deque(maxlen=capacity)
-    
+
     def push(self, *args):
         self.memory.append(Experience(*args))
-    
+
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
-    
+
     def __len__(self):
         return len(self.memory)
 
 # 演员网络（策略网络）
 class ActorNetwork(nn.Module):
-    def __init__(self, obs_dim, action_dim, hidden_dim=512): # TODO:
+    def __init__(self, obs_dim, action_dim, hidden_dim=512):
         super(ActorNetwork, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
@@ -35,13 +35,13 @@ class ActorNetwork(nn.Module):
             nn.Linear(hidden_dim, action_dim),
             nn.Tanh()  # 将动作限制在[-1, 1]范围内
         )
-    
+
     def forward(self, state):
         return self.network(state)
 
 # 评论家网络（价值网络）
 class CriticNetwork(nn.Module):
-    def __init__(self, obs_dim, action_dim, hidden_dim=512): # TODO:
+    def __init__(self, obs_dim, action_dim, hidden_dim=512):
         super(CriticNetwork, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(obs_dim + action_dim, hidden_dim),
@@ -57,9 +57,9 @@ class CriticNetwork(nn.Module):
 
 # DDPG代理（使用高斯噪声）
 class DDPG:
-    def __init__(self, obs_dim, action_dim, lr_actor=5e-4, lr_critic=5e-3, 
-                 gamma=0.95, tau=0.001, buffer_size=1000000, batch_size=256,
-                 noise_scale=0.5, noise_decay=0.9995, min_noise_scale=0.3):   # TODO  
+    def __init__(self, obs_dim, action_dim, lr_actor=3e-4, lr_critic=1e-3,
+                 gamma=0.99, tau=0.001, buffer_size=1000000, batch_size=256,
+                 noise_scale=0.5, noise_decay=0.9995, min_noise_scale=0.15):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
 
@@ -70,21 +70,26 @@ class DDPG:
         self.noise_decay = noise_decay  # 噪声衰减因子
         self.current_noise_scale = noise_scale
         self.min_noise_scale = min_noise_scale
-        
+
+        # Ornstein - Uhlenbeck 噪声参数
+        self.ou_noise = np.zeros(action_dim)
+        self.ou_theta = 0.15
+        self.ou_sigma = 0.2
+
         # 创建网络
         self.actor = ActorNetwork(obs_dim, action_dim).to(self.device)
         self.actor_target = ActorNetwork(obs_dim, action_dim).to(self.device)
         self.critic = CriticNetwork(obs_dim, action_dim).to(self.device)
         self.critic_target = CriticNetwork(obs_dim, action_dim).to(self.device)
-        
+
         # 复制权重到目标网络
         self.actor_target.load_state_dict(self.actor.state_dict())
         self.critic_target.load_state_dict(self.critic.state_dict())
-        
+
         # 优化器
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=lr_actor)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=lr_critic)
-        
+
         # 经验回放缓冲区
         self.replay_buffer = ReplayBuffer(buffer_size)
 
@@ -95,25 +100,28 @@ class DDPG:
         with torch.no_grad():
             action = self.actor(state).cpu().detach().numpy().flatten()
         self.actor.train()
-        
+
         # 在训练时添加噪声，评估时不添加噪声
         if add_noise and not evaluate:
-            noise = np.random.normal(0, self.current_noise_scale, size=action.shape)
+            #使用OU噪声
+            self.ou_noise = (1 - self.ou_theta) * self.ou_noise + self.ou_sigma * np.random.normal(size=action.shape)
+            noise = self.current_noise_scale * self.ou_noise
             action += noise
-        
+
         return np.clip(action, -1, 1)  # 确保动作在[-1, 1]范围内
-    
-    def decay_noise(self):
-        # 在每个Episode结束时衰减噪声
-        self.current_noise_scale = max(
-            self.current_noise_scale * self.noise_decay,
-            self.min_noise_scale
-        )
+
+    def decay_noise(self, episode_reward):
+        # 只有表现好时才衰减噪声
+        if episode_reward > 0.75:  # 奖励阈值
+            self.current_noise_scale = max(
+                self.current_noise_scale * self.noise_decay,
+                self.min_noise_scale
+            )
 
     def update(self):
         if len(self.replay_buffer) < self.batch_size:
             return
-        
+
         # 从回放缓冲区采样
         experiences = self.replay_buffer.sample(self.batch_size)
 
@@ -129,33 +137,33 @@ class DDPG:
         rewards = torch.FloatTensor(rewards).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(dones).to(self.device)
-     
+
         # 更新评论家网络
         next_actions = self.actor_target(next_states)
         target_q = self.critic_target(next_states, next_actions)
         target_q = rewards + (1 - dones) * self.gamma * target_q
-        
+
         current_q = self.critic(states, actions)
         critic_loss = nn.MSELoss()(current_q, target_q)
-        
+
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
-        
+
         # 更新演员网络
         actor_loss = -self.critic(states, self.actor(states)).mean()
-        
+
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
-        
+
         # 软更新目标网络
         for target_param, param in zip(self.actor_target.parameters(), self.actor.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-        
+
         for target_param, param in zip(self.critic_target.parameters(), self.critic.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-    
+
     def store_transition(self, state, action, reward, next_state, done):
         self.replay_buffer.push(state, action, reward, next_state, done)
 
@@ -163,8 +171,12 @@ class DDPG:
 def train_ddpg(env, total_timesteps=1000000, load_actor_path=None, load_critic_path=None):
     obs_dim = env.obs_dim
     action_dim = env.action_dim
-    agent = DDPG(obs_dim, action_dim)
-
+    agent = DDPG(obs_dim, action_dim,
+                 lr_actor=3e-4,
+                 lr_critic=1e-3,
+                 batch_size=256,
+                 noise_scale=0.5)
+    
     # —— 如果指定了已有模型路径且文件存在，就加载参数 —— #
     if load_actor_path is not None and os.path.isfile(load_actor_path):
         agent.actor.load_state_dict(torch.load(load_actor_path, map_location=agent.device))
@@ -177,27 +189,30 @@ def train_ddpg(env, total_timesteps=1000000, load_actor_path=None, load_critic_p
     if load_actor_path is None and load_critic_path is None:
         print("No pre-trained model found, starting training from scratch.")
 
-    
     episode_rewards = deque(maxlen=100)
     timestep = 0
     episode = 0
     
     state = env.reset()
-
     episode_reward = 0
+    episode_steps = 0
+
+    # 新增：创建模型保存目录
+    save_dir = "trained_models"
+    os.makedirs(save_dir, exist_ok=True)
     
+    # 新增：创建奖励记录文件
+    reward_log_path = os.path.join(save_dir, "training_rewards.csv")
+    with open(reward_log_path, 'w') as f:
+        f.write("timestep,avg_reward\n")
+
     while timestep < total_timesteps:
-        # if episode < 3500:
-        #     env.set_phase(2)
-        # elif 3500 <= episode < 6000:
-        #     env.set_phase(2)
-        # else:
-        #     env.set_phase(2)
         env.set_phase(2)
+
         # 选择和执行动作
         action = agent.select_action(state)
         next_state, reward, done, _ = env.step(action)
-        
+
         # 存储转换
         agent.store_transition(state, action, reward, next_state, done)
         
@@ -205,28 +220,40 @@ def train_ddpg(env, total_timesteps=1000000, load_actor_path=None, load_critic_p
         state = next_state
         timestep += 1
         episode_reward += reward
-        
+
         # 优化代理
         agent.update()
+
+        # 新增：每10000次时间步保存模型并记录平均奖励
+        if timestep % 10000 == 0:
+            avg_reward = np.mean(episode_rewards) if episode_rewards else 0
+            actor_path = os.path.join(save_dir, f"robot_walking_ddpg_actor_{timestep}_r{avg_reward:.2f}.pth")
+            critic_path = os.path.join(save_dir, f"robot_walking_ddpg_critic_{timestep}_r{avg_reward:.2f}.pth")
+            torch.save(agent.actor.state_dict(), actor_path)
+            torch.save(agent.critic.state_dict(), critic_path)
+            print(f"Model saved at timestep {timestep} to {save_dir}, avg_reward: {avg_reward:.2f}")
+            
+            # 记录奖励到CSV文件
+            with open(reward_log_path, 'a') as f:
+                f.write(f"{timestep},{avg_reward:.6f}\n")
         
         # 处理episode结束
         if done:
             # 记录奖励
             episode_rewards.append(episode_reward)
             avg_reward = np.mean(episode_rewards) if episode_rewards else 0
-            
             print(f"Episode {episode}, timestep {timestep}, "
                   f"reward: {episode_reward:.2f}, "
                   f"avg reward: {avg_reward:.2f}, "
                   f"noise_scale: {agent.current_noise_scale:.4f}")
             
-            agent.decay_noise()  # 衰减噪声
+            agent.decay_noise(episode_reward)  # 衰减噪声
 
             # 重置episode计数器
             state = env.reset()
             episode_reward = 0
             episode += 1
-    
+
     # 保存训练好的模型
     torch.save(agent.actor.state_dict(), 'robot_walking_ddpg_actor.pth')
     torch.save(agent.critic.state_dict(), 'robot_walking_ddpg_critic.pth')

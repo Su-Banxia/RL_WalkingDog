@@ -60,33 +60,133 @@ class RobotEnv:
         - 躯干角速度 (angular velocity): 3
         - 关节位置和速度: 12 
         - 脚与地面的接触力: 2
-        - 上一次动作: 6 (对应6个关节的扭矩)
+        - 上一次动作: 2 (对应6个关节的扭矩)
         '''
         self.obs_dim = 2 + 3 + 6 + 12 + 2 + self.action_dim  # 根据需求定义的观测维度
 
-        # ====== 新增：阶段控制变量，默认从阶段 1 开始 ======
-        #  phase = 1, 2 或 3，由训练循环根据 Episode 设置
-        '''
-        阶段 1(Episode 0 - 499): 只给“保持直立”+“保持躯干水平”奖励，让机器人先学会不倒；
+        self.phase = 2
 
-        阶段 2(Episode 500 - 999): 在阶段 1 的基础上，加入少量向前移动奖励，让它开始尝试往前挪动；
-
-        阶段 3(Episode ≥ 1000): 加大向前移动奖励，并加上能耗惩罚，鼓励高效步态。
-        '''
-        self.phase = 1
-
-        
         # 初始化环境状态
         self.reset()
-    
+
+        # 添加步态时钟相关参数
+        self.gait_cycle_time = 2.0  # 步态周期时长(秒)
+        self.phase_clock = 0.0  # 步态相位 [0,1)
+        self.time_in_cycle = 0.0  # 当前周期内的时间
+
+        # 步态时钟函数
+        self.right_clock = self._create_phase_functions("right")
+        self.left_clock = self._create_phase_functions("left")
+
+        # 存储前一步的数据用于奖励计算
+        self.prev_torque = np.zeros(self.action_dim)
+        self.prev_action = np.zeros(self.action_dim)
+
+        self.current_steps = 0  # 新增步数计数器
+
     def set_phase(self, phase):
         """phase 必须是 1、2 或 3。训练循环中根据 Episode 调用本函数。"""
         assert phase in (1, 2, 3), "phase 必须为 1、2 或 3"
         self.phase = phase
 
+    def _create_phase_functions(self, side):
+        """创建足部力和速度的时钟函数"""
+        # 左腿先摆动
+        if side == "right":
+            def frc_fn(phase_clock):
+                return 1.0 if phase_clock < 0.5 else -1.0  # 右腿在前半周期支撑
+
+            def vel_fn(phase_clock):
+                return -1.0 if phase_clock < 0.5 else 1.0  # 右腿在后半周期摆动
+        else:
+            def frc_fn(phase_clock):
+                return -1.0 if phase_clock < 0.5 else 1.0  # 左腿在后半周期支撑
+
+            def vel_fn(phase_clock):
+                return 1.0 if phase_clock < 0.5 else -1.0  # 左腿在前半周期摆动
+
+        return [frc_fn, vel_fn]
+
+    def _calc_foot_frc_clock_reward(self):
+        """基于步态时钟的足部力奖励"""
+        r_frc = self.right_clock[0](self.phase_clock)
+        l_frc = self.left_clock[0](self.phase_clock)
+
+        # 获取足部接触力
+        foot_contacts,min_height = self._get_foot_contacts()
+        l_contact = foot_contacts[0] if len(foot_contacts) > 0 else 0
+        r_contact = foot_contacts[1] if len(foot_contacts) > 1 else 0
+
+        # 归一化
+        max_force = 100  # 假设最大接触力
+        norm_r = min(r_contact, max_force) / max_force
+        norm_l = min(l_contact, max_force) / max_force
+
+        # 计算匹配得分
+        r_score = np.tan(np.pi / 4 * r_frc * (2 * norm_r - 1))
+        l_score = np.tan(np.pi / 4 * l_frc * (2 * norm_l - 1))
+
+        return (r_score + l_score) / 2,min_height
+
+    def _calc_foot_vel_clock_reward(self):
+        """基于步态时钟的足部速度奖励"""
+        r_vel = self.right_clock[1](self.phase_clock)
+        l_vel = self.left_clock[1](self.phase_clock)
+
+        # 获取足部速度
+        r_foot_vel = self._get_foot_velocity("right")
+        l_foot_vel = self._get_foot_velocity("left")
+
+        # 归一化
+        max_vel = 2.0  # 假设最大速度
+        norm_r = min(np.linalg.norm(r_foot_vel), max_vel) / max_vel
+        norm_l = min(np.linalg.norm(l_foot_vel), max_vel) / max_vel
+
+        # 计算匹配得分
+        r_score = np.tan(np.pi / 4 * r_vel * (2 * norm_r - 1))
+        l_score = np.tan(np.pi / 4 * l_vel * (2 * norm_l - 1))
+
+        return (r_score + l_score) / 2
+
+    def _get_foot_velocity(self, side):
+        """获取足部速度"""
+        foot_idx = self.foot_joint_indices[0] if side == "left" else self.foot_joint_indices[1]
+        link_state = p.getLinkState(self.robotId, foot_idx, computeLinkVelocity=1)
+        return link_state[6]  # 返回线速度
+
+    def _get_joint_torques(self):
+        """获取当前关节扭矩"""
+        torques = []
+        for i in self.joint_indices:
+            _, _, _, applied_torque = p.getJointState(self.robotId, i)
+            torques.append(applied_torque)
+        return np.array(torques)
+
+    def _get_foot_contacts(self):
+        """获取足部接触力与最低点"""
+        foot_contacts = [0.0] * len(self.foot_joint_indices)
+        min_foot_height = 99
+        contact_points = p.getContactPoints(bodyA=self.robotId, bodyB=self.planeId)
+        for contact in contact_points:
+            contact_joint_idx = contact[3]
+            contact_pos_z = contact[6][2]
+
+            if contact_pos_z < min_foot_height:
+                min_foot_height = contact_pos_z
+            for i, foot_idx in enumerate(self.foot_joint_indices):
+                if contact_joint_idx == foot_idx:
+                    foot_contacts[i]+= contact[9]  # 法向力
+                    break
+        if min_foot_height>90:
+            min_foot_height = 0.0
+        return foot_contacts,min_foot_height
+
     def reset(self):
         # 重置机器人位置和姿态
         p.resetBasePositionAndOrientation(self.robotId, [0, 0, 0.60], [0, 0, 0, 1])
+
+        self.current_steps = 0
+        self.goal_speed = 0.3
         
         # 重置关节位置到初始状态
         for i in self.joint_indices:
@@ -102,12 +202,19 @@ class RobotEnv:
         # 获取初始观测
         self.last_action = np.zeros(self.action_dim)  # 初始化上一次动作缓存
         observation = self._get_observation()
+
+        self.timestep = 0  # 初始化时间步
         
         return observation
     
     def step(self, action):
+        # 更新步态时钟
+        self.current_steps += 1
+        self.time_in_cycle += 1.0/240.0
+        self.phase_clock = (self.time_in_cycle % self.gait_cycle_time) / self.gait_cycle_time
+
         # 应用关节扭矩
-        max_torque = 1.5
+        max_torque = 10.0
         for _ in range(self.action_repeat):
             for i, joint_idx in enumerate(self.joint_indices):
                 torque = float(action[i]) * max_torque 
@@ -118,18 +225,15 @@ class RobotEnv:
                     force=torque
                 )
             p.stepSimulation()
-        # 执行一步物理模拟
-        # print("Before stepSimulation")
-        # p.stepSimulation()
-        # print("After stepSimulation")
-        
-        # 获取新的观测
+
         observation = self._get_observation()
-        
-        # 计算奖励
+
         reward = self._calculate_reward(observation, action)
-        
-        # 检查是否终止
+
+        # 保存当前动作和扭矩用于下次计算
+        self.prev_action = action
+        self.prev_torque = self._get_joint_torques()
+
         done = self._check_done(observation)
         
         # 更新上一次动作缓存
@@ -189,20 +293,28 @@ class RobotEnv:
         self.energy_weight = energy_weight
         self.path_weight = path_weight
 
-    def _calculate_reward(self, observation, action):
+    def _calculate_reward(self, observation, action):#TODO
         # 奖励函数设计，这里需要根据任务目标进行调整
-        foot_contacts = [0.0] * 2
         pos_y = observation[0]  # 躯干y方向位置（希望保持在0附近）
         pos_z = observation[1]  # 躯干z方向位置（希望保持在合适高度）
         vel_x = observation[2]  # 躯干x方向速度
         vel_y = observation[3]  # 躯干y方向速度
         vel_z = observation[4]  # 躯干z方向速度
-        pitch = observation[6]  # 躯干pitch角度（希望接近0，表示躯干竖直）
-        foot_contacts[0] = observation[-8]
-        foot_contacts[1] = observation[-7]
-        
+        roll = observation[5]  # 躯干roll角度
+        pitch = observation[6]  # 躯干pitch角度
+        yaw = observation[7] # 躯干yaw角度
+
+        ankle_angle_vel = [observation[16], observation[22]]  # 脚踝角速度
+        foot_contacts = [observation[-8], observation[-7]]  # 获取脚与地面的接触力
+
+        # 新增步态时钟奖励
+        gait_frc_reward,min_height= self._calc_foot_frc_clock_reward()
+        gait_vel_reward = self._calc_foot_vel_clock_reward()
+
+
         upright_target_z = 0.56       # 理想高度
         fall_penalty = -5.0 if pos_z < 0.3 else 0.0
+        self.goal_speed = 0.4
 
         if self.phase == 1:
             # ===== 阶段 1：只做“保持直立”+“保持平衡”奖励 =====
@@ -234,122 +346,57 @@ class RobotEnv:
                       + vel_penalty + fall_penalty 
                       + path_penalty + energy_penalty)
 
-        elif self.phase == 2:#TODO
-            # ===== Phase 2：保持姿态 & 双脚着地 & 能微移向前 =====
-            base_reward = 0.0  # 基础奖励
-
+        elif self.phase == 2: #TODO
             # —— 1. 躯干高度奖励 —— #
             K1 = 50.0
-            # upright_reward = -K1 * (pos_z - upright_target_z) ** 2
-            upright_reward = np.exp(-K1 * (pos_z - upright_target_z) ** 2)
+            upright_reward = np.exp(-K1 * (pos_z-min_height - 0.56) ** 2)
 
-            # 额外惩罚过低的高度（防止蹲下）
-            if pos_z < 0.4:
-                upright_reward *= 0.5  # 降低奖励
-                height_penalty = -20.0 * (0.4 - pos_z)  # 线性惩罚过低高度
-            else:
-                height_penalty = 0.0
+            # —— 2. 躯干 pitch yaw roll “二次”奖励 —— #
+            K2 = 10.0
+            balance_reward = np.exp(-K2 * ((pitch + yaw + roll) ** 2))
 
-            # —— 2. 躯干 pitch 惩罚 —— #
-            K2 = 100.0
-            # # balance_reward = np.exp(-K2 * (pitch ** 2))
-            balance_penalty = -K2 * (pitch ** 2)
+            # —— 3. 身体速度惩罚 —— #
+            #vel_penalty = -K_vel * (vel_x ** 2 + vel_y ** 2 + vel_z ** 2)
+            forward_reward=np.exp(-abs(vel_x - self.goal_speed))
 
             # —— 4. 能量消耗惩罚 —— #
-            K_e = 0.1
-            # energy_penalty = -K_e * np.sum(action**2)
-            energy_penalty = -K_e * np.sum(action**2)
+            K_e = 0.25
+            energy_penalty = np.exp(-K_e * np.sum(action**2))
 
             # —— 5. 偏离中心线惩罚 —— #
             K_p = 3.0
-            # path_penalty = -K_p * (pos_y ** 2)
-            path_penalty = -K_p * (pos_y ** 2)
+            #path_penalty = -K_p * (pos_y ** 2)
+            path_penalty = np.exp(-K_p * (pos_y ** 2))
 
-            # —— 6. 向前移动奖励 —— #
-            K_forward2 = 5.0
-            forward_reward = K_forward2 * max(vel_x, 0)
+            time_reward=-np.exp(-min(self.current_steps*0.01,10) if abs(pitch) < 0.5 else 0)
 
-            # —— 7. 抬脚奖励 —— #
-            K_lift_foot = 2.0
-            lift_foot_reward = 0
+            #TODO: 调整各项奖励的权重
+            reward = (4.0 * forward_reward + 
+                      1.0 * upright_reward + 
+                      2.0 * balance_reward + 
+                      1.0 * gait_frc_reward + 
+                      1.0 * gait_vel_reward + 
+                      1.0 * path_penalty + 
+                      2.0 * energy_penalty + 
+                      4.0 * time_reward)
             
-            # 区分左右脚，鼓励交替抬脚
-            left_foot_force = foot_contacts[0]
-            right_foot_force = foot_contacts[1]
-            
-            # 计算抬脚的平衡度（理想情况：一只脚完全抬起，另一只脚完全着地）
-            lift_balance = abs(left_foot_force - right_foot_force) / 5.0  # 归一化
-            lift_foot_reward = lift_balance * K_lift_foot
-
-            # 额外奖励合理的抬脚高度（通过关节角度判断）
-            foot_lift_reward = 0
-            if left_foot_force < 0.5:  # 左脚抬起
-                foot_lift_reward += 1.0
-            if right_foot_force < 0.5:  # 右脚抬起
-                foot_lift_reward += 1.0
-
-            fall_penalty = -50.0 if pos_z < 0.3 else 0.0
-
-            reward = forward_reward  + upright_reward + energy_penalty + path_penalty + balance_penalty + fall_penalty + lift_foot_reward \
-                        + foot_lift_reward + height_penalty
+        #print(forward_reward,upright_reward,balance_reward,gait_frc_reward,gait_vel_reward,path_penalty,energy_penalty,time_reward)
         
         else:  # self.phase == 3
-            # ===== Phase 3：能微移向前 =====
-            
-            # —— 1. 躯干高度奖励 —— #
-            K1 = 50.0
-            upright_reward = np.exp(-K1 * (pos_z - upright_target_z) ** 2)
-
-            # —— 2. 躯干 pitch “二次”奖励 —— #
-            K2 = 10.0
-            balance_reward = np.exp(-K2 * (pitch ** 2))
-
-            # —— 3. 能量消耗惩罚 —— #
-            K_e = 2.0
-            energy_penalty = -K_e * np.sum(action**2)
-            # energy_penalty = np.exp(-K_e * np.sum(action**2))
-
-            # —— 4. 向前移动奖励 —— #
-            K_forward2 = 10.0
-            # forward_reward = K_forward2 * vel_x
-            forward_reward = np.exp(-K_forward2 * (vel_x - 0.5) ** 2)
-
-            fall_penalty = -50.0 if pos_z < 0.3 else 0.0
-
-            reward = (upright_reward + balance_reward 
-                      + fall_penalty + base_reward
-                      + energy_penalty
-                      + forward_reward)
-
-        # # 基础奖励：
-        # base_reward = 0.0625   #0.0625
-
-        # # 主要奖励：向前移动速度
-        # forward_reward = vel_x
+            reward = 0.0
         
-        # # 惩罚：偏离中心线
-        # # path_penalty = -self.path_weight * pos_y ** 2
-        # path_penalty = -3.0 * pos_y ** 2
+        # 映射奖励到[-1, 1]范围 TODO
+        # reward = np.tanh(reward)
 
-        # # 惩罚：躯干高度过低
-        # height_penalty = -50 * (pos_z - 0.56) ** 2
-
-        # # 惩罚：能量消耗
-        # action_magnitude = np.sum(np.square(action))
-        # # energy_penalty = -self.energy_weight * action_magnitude
-        # energy_penalty = -0.02 * action_magnitude
-        
-        # # 惩罚：摔倒
-        # fall_penalty = 0 if pos_z >= 0.3 else -5  # 如果躯干高度过低，认为摔倒
-        
-        # # 总奖励
-        # reward = base_reward + forward_reward + fall_penalty #+ path_penalty + energy_penalty + height_penalty 
-        
         return reward
     
     def _check_done(self, observation):
         pos_z = observation[1]  # 躯干z方向位置
-        return pos_z < 0.3  # 如果躯干高度过低，认为摔倒，结束当前episode
+        roll = observation[5]
+        pitch = observation[6]
+        yaw = observation[7]
+        return pos_z < 0.05 or abs(pitch) > 1.37 or abs(roll) > 1.37 or abs(yaw) > 1.37
+    #TODO
     
     def close(self):
         p.disconnect()
