@@ -9,6 +9,12 @@ def test_robot_with_trained_model(total_steps=5000, render=True, slow_down_facto
     # Create environment instance
     env = RobotEnv(render=render)
 
+    motion_data = {
+        "timesteps": [],
+        "link_positions": [],
+        "link_orientations": []
+    }
+
     # Create agent and load pretrained models
     obs_dim = env.obs_dim
     action_dim = env.action_dim
@@ -38,6 +44,15 @@ def test_robot_with_trained_model(total_steps=5000, render=True, slow_down_facto
         # Execute action
         observation, reward, done, info = env.step(action)
 
+        # Recording Keyframe Data
+        if step % 2 == 0:
+            base=p.getBasePositionAndOrientation(env.robotId)[:2]
+            link_states = [p.getLinkState(env.robotId, i) for i in range(p.getNumJoints(env.robotId))]
+            motion_data["timesteps"].append(step)
+            motion_data["link_positions"].append([state[0] for state in link_states]+[base[0]])
+            motion_data["link_orientations"].append([state[1] for state in link_states]+[base[1]])
+
+        current_episode_reward = 0.0
         current_episode_reward += reward
 
         # If robot falls, reset environment and record position
@@ -52,6 +67,7 @@ def test_robot_with_trained_model(total_steps=5000, render=True, slow_down_facto
             if dist2d < env.target_threshold:
                 print(f"Triggered terminal bonus: +{env.terminal_bonus:.1f}")
                 current_episode_reward += env.terminal_bonus
+
 
             position, _ = p.getBasePositionAndOrientation(env.robotId)
             episode_distance = position[0] - start_position[0]
@@ -95,9 +111,13 @@ def test_robot_with_trained_model(total_steps=5000, render=True, slow_down_facto
         avg_distance = sum(episode_distances) / len(episode_distances)
         print(f"Average episode distance: {avg_distance:.3f} meters")
 
+    import json
+    with open("robot_motion.json", "w") as f:
+        json.dump(motion_data, f)
+
     # Close environment
     env.close()
-    print("Testing completed")
+    print("测试完成")
 
 if __name__ == "__main__":
     test_robot_with_trained_model(render=True, slow_down_factor=2.0)  # Half speed for better observation
