@@ -17,3 +17,16 @@ After training completes, use `test_robot.py` to visualize the results in PyBull
 ```
 python -m scripts.test_robot
 ```
+## 3DGS Resources
+
+### Core Implementation
+- [Windows Install Guide](https://github.com/jonstephens85/gaussian-splatting-Windows)  
+  Simplified Windows setup for 3DGS
+
+### Datasets
+- [USTC Resource Pack](https://rec.ustc.edu.cn/share/aa59d8f0-4461-11f0-a898-03cb5c3e4c28)  
+  Models & scene data
+
+### Engine Integration
+- [Unreal Engine 5 Plugin](https://github.com/xverse-engine/XV3DGS-UEPlugin)  
+  Real-time 3DGS rendering for UE5
