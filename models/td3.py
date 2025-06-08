@@ -1,4 +1,3 @@
-# TD3代理（使用高斯噪声 + 双Critic + 延迟Actor更新 + target smoothing）
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,7 +8,7 @@ import random
 import os
 import pybullet as p
 
-# 经验回放缓冲区
+# Experience replay buffer
 Experience = namedtuple('Experience', ('state', 'action', 'reward', 'next_state', 'done'))
 
 class ReplayBuffer:
@@ -27,35 +26,29 @@ class ReplayBuffer:
     def __len__(self):
         return len(self.memory)
 
-# 演员网络（策略网络）
 class ActorNetwork(nn.Module):
     def __init__(self, obs_dim, action_dim, hidden_dim=512):
         super(ActorNetwork, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
             nn.ReLU(),
-            # nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            # nn.LayerNorm(hidden_dim), # 归一化
             nn.Linear(hidden_dim, action_dim),
-            nn.Tanh()  # 将动作限制在[-1, 1]范围内
+            nn.Tanh()  # Constrain output to [-1, 1]
         )
 
     def forward(self, state):
         return self.network(state)
 
-# 评论家网络（价值网络）
 class CriticNetwork(nn.Module):
     def __init__(self, obs_dim, action_dim, hidden_dim=512):
         super(CriticNetwork, self).__init__()
         self.network = nn.Sequential(
             nn.Linear(obs_dim + action_dim, hidden_dim),
             nn.ReLU(),
-            # nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            # nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, 1)
         )
     
@@ -77,9 +70,9 @@ class TD3:
         self.policy_noise = policy_noise
         self.noise_clip = noise_clip
         self.policy_delay = policy_delay
-        self.total_it = 0  # 计步器，判断是否延迟更新Actor
+        self.total_it = 0  # Step counter for delayed policy updates
 
-        # 网络
+        # Networks
         self.actor = ActorNetwork(obs_dim, action_dim).to(self.device)
         self.actor_target = ActorNetwork(obs_dim, action_dim).to(self.device)
         self.critic1 = CriticNetwork(obs_dim, action_dim).to(self.device)
@@ -87,17 +80,17 @@ class TD3:
         self.critic1_target = CriticNetwork(obs_dim, action_dim).to(self.device)
         self.critic2_target = CriticNetwork(obs_dim, action_dim).to(self.device)
 
-        # 同步target
+        # Synchronize target networks
         self.actor_target.load_state_dict(self.actor.state_dict())
         self.critic1_target.load_state_dict(self.critic1.state_dict())
         self.critic2_target.load_state_dict(self.critic2.state_dict())
 
-        # 优化器
+        # Optimizers
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=lr_actor)
         self.critic1_optimizer = optim.Adam(self.critic1.parameters(), lr=lr_critic)
         self.critic2_optimizer = optim.Adam(self.critic2.parameters(), lr=lr_critic)
 
-        # 回放缓冲区
+        # Replay buffer
         self.replay_buffer = ReplayBuffer(buffer_size)
 
     def select_action(self, state, add_noise=True, evaluate=False):
@@ -189,7 +182,7 @@ def train_td3(env, total_timesteps=1000000, load_actor_path=None, load_critic1_p
                  lr_critic=1e-3,
                  batch_size=256)
     
-    # 加载预训练模型（如果提供）
+    # Load pre-trained models if available
     if load_actor_path and os.path.isfile(load_actor_path):
         agent.actor.load_state_dict(torch.load(load_actor_path, map_location=agent.device))
         agent.actor_target.load_state_dict(torch.load(load_actor_path, map_location=agent.device))
@@ -208,37 +201,37 @@ def train_td3(env, total_timesteps=1000000, load_actor_path=None, load_critic1_p
     if not (load_actor_path or load_critic1_path or load_critic2_path):
         print("No pre-trained model found, starting training from scratch.")
 
-    # 训练统计
-    episode_rewards = deque(maxlen=100)         # 最近100个回合的奖励
-    episode_lengths = deque(maxlen=100)         # 最近100个回合的长度
+    # Training statistics
+    episode_rewards = deque(maxlen=100)         # Last 100 episode rewards
+    episode_lengths = deque(maxlen=100)         # Last 100 episode lengths
     timestep = 0
     episode = 0
-    best_avg_reward = -float('inf')             # 记录最佳平均奖励
+    best_avg_reward = -float('inf')             # Track best average reward
     
-    # 重置环境
+    # Reset environment
     state = env.reset()
     episode_reward = 0
     episode_steps = 0
 
-    # 设置保存目录和文件
-    save_dir = "trained_models"
+    # Setup save directory and files
+    save_dir = "training_models"
     os.makedirs(save_dir, exist_ok=True)
     reward_log_path = os.path.join(save_dir, "training_rewards.csv")
     
-    # 创建/初始化奖励记录文件
+    # Create/initialize reward log file
     if not os.path.exists(reward_log_path):
         with open(reward_log_path, 'w') as f:
             f.write("timestep,avg_reward\n")
     
-    # 主训练循环
+    # Main training loop
     while timestep < total_timesteps:
-        # 选择和执行动作
-        action = agent.select_action(state, add_noise=(timestep < total_timesteps * 0.8))  # 后期减少噪声
+        # Select and execute action
+        action = agent.select_action(state, add_noise=(timestep < total_timesteps * 0.8))  # Reduce noise in later stages
         next_state, reward, done, _ = env.step(action)
 
-        # 终局奖励（如果到达目标）
+        # Terminal reward (if reached target)
         if done:
-            # 读取当前在物理仿真中的位置
+            # Read current position in simulation
             pos, _ = p.getBasePositionAndOrientation(env.robotId)
             pos_x, pos_y = pos[0], pos[1]
             dx = pos_x - env.target_x
@@ -247,26 +240,26 @@ def train_td3(env, total_timesteps=1000000, load_actor_path=None, load_critic1_p
             if dist2d < env.target_threshold:
                 reward += env.terminal_bonus
 
-        # 存储经验转换
+        # Store experience transition
         agent.store_transition(state, action, reward, next_state, done)
         
-        # 更新状态和计数器
+        # Update state and counters
         state = next_state
         timestep += 1
         episode_reward += reward
         episode_steps += 1
 
-        # 优化代理（更新网络权重）
-        if len(agent.replay_buffer) > agent.batch_size:  # 确保有足够经验
+        # Optimize agent (update network weights)
+        if len(agent.replay_buffer) > agent.batch_size:  # Ensure sufficient experience
             agent.update()
 
-        # 保存和记录（每5000步或终局）
+        # Save and log (every 5000 steps or episode end)
         if timestep % 5000 == 0 or done:
-            # 计算平均奖励
+            # Calculate average rewards
             avg_reward = np.mean(episode_rewards) if episode_rewards else 0
             avg_length = np.mean(episode_lengths) if episode_lengths else 0
             
-            # 保存最佳模型
+            # Save best model
             if avg_reward > best_avg_reward:
                 best_avg_reward = avg_reward
                 best_timestep = timestep
@@ -275,7 +268,7 @@ def train_td3(env, total_timesteps=1000000, load_actor_path=None, load_critic1_p
                 torch.save(agent.critic2.state_dict(), os.path.join(save_dir, f"best_critic2_ts{timestep}_r{avg_reward:.1f}.pth"))
                 print(f"🚀 New best model saved at ts {timestep} with avg reward {avg_reward:.1f}!")
             
-            # 定期完整保存
+            # Periodic full save
             if timestep % 5000 == 0:
                 actor_path = os.path.join(save_dir, f"actor_ts{timestep}_r{avg_reward:.1f}.pth")
                 critic1_path = os.path.join(save_dir, f"critic1_ts{timestep}_r{avg_reward:.1f}.pth")
@@ -284,31 +277,30 @@ def train_td3(env, total_timesteps=1000000, load_actor_path=None, load_critic1_p
                 torch.save(agent.critic1.state_dict(), critic1_path)
                 torch.save(agent.critic2.state_dict(), critic2_path)
             
-            # 记录训练进度
+            # Log training progress
             with open(reward_log_path, 'a') as f:
                 f.write(f"{timestep},{avg_reward:.6f}\n")
         
-        # 处理回合结束
+        # Handle episode termination
         if done:
             episode_rewards.append(episode_reward)
             episode_lengths.append(episode_steps)
             avg_reward = np.mean(episode_rewards) if episode_rewards else 0
             avg_length = np.mean(episode_lengths) if episode_lengths else 0
-            
-            # 打印状态
+
             print(f"🌀 Episode {episode} | "
                   f"Steps: {episode_steps} | "
                   f"Reward: {episode_reward:.1f} | "
                   f"Avg: {avg_reward:.1f} | "
                   f"Length: {avg_length:.1f}")
             
-            # 重置回合
+            # Reset episode
             state = env.reset()
             episode_reward = 0
             episode_steps = 0
             episode += 1
 
-    # 保存最终模型
+    # Save final models
     final_path = os.path.join(save_dir, "final_model")
     os.makedirs(final_path, exist_ok=True)
     torch.save(agent.actor.state_dict(), os.path.join(final_path, "final_actor.pth"))
@@ -318,7 +310,7 @@ def train_td3(env, total_timesteps=1000000, load_actor_path=None, load_critic1_p
     print(f"✅ Training complete! Final models saved in {final_path}")
     return agent
 
-# 评估函数（不添加噪声）
+# Evaluation function (without noise)
 def evaluate_td3(env, agent, episodes=10):
     total_rewards = 0
     for episode in range(episodes):
@@ -326,11 +318,10 @@ def evaluate_td3(env, agent, episodes=10):
         done = False
         episode_reward = 0
         while not done:
-            # 评估时不添加噪声
             action = agent.select_action(state, add_noise=False, evaluate=True)
             state, reward, done, _ = env.step(action)
             episode_reward += reward
-            env.render()  # 可视化评估过程
+            env.render()
         total_rewards += episode_reward
         print(f"Evaluation Episode {episode+1}, Reward: {episode_reward:.2f}")
     

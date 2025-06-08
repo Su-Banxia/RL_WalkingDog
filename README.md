@@ -1,13 +1,13 @@
-`robot_env.py`  包括模型输入和输出定义，奖励函数设置等（奖励函数得多改改）
+`robot_env.py` - Contains model input/output definitions and reward function settings (reward function needs more tuning)
 
-`td3.py` 是用TD3算法更新actor和critic1，critic2三个网络
+`td3.py` - Implements TD3 algorithm for updating actor, critic1, and critic2 networks
 
-`start_train_td3.py` 就是用来训练的，可以在终端用
+`start_train_td3.py` - Used for training. Can be executed in terminal with:
 
 ```
-python start_train_td3.py --train --timesteps 100000
+python scripts\start_train_td3.py --train --timesteps 100000
 ```
 
-开始训练，其他参数也可以设置。
+to start training. Other parameters can also be configured.
 
-训练完毕后，用`test_robot.py`在pybullet中运行查看效果
+After training completes, use test_robot.py to visualize the results in PyBullet
