@@ -1,11 +1,40 @@
+# General system files
+.DS_Store
+Thumbs.db
+*.bak
+~$*
+
+# Python compilation artifacts
 __pycache__/
 *.py[cod]
-*.so
-.Python
-build/
-dist/
-*.egg-info/
-robot_walking_ddpg_actor.pth
-robot_walking_ddpg_critic.pth
-gif/
-trained_models/
+*$py.class
+
+# Jupyter Notebook temporary files
+.ipynb_checkpoints/
+*.ipynb_checkpoints*
+
+# Training outputs - model weights
+models/training_models/*.pth
+!models/training_models/.gitkeep  # Keep empty directory structure
+
+# Environment files
+.env
+venv/
+.venv/
+*.env
+
+# IDE-specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+
+# Data files (customize as needed)
+*.csv
+*.h5
+*.pkl

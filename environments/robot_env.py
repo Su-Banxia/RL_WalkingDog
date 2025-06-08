@@ -20,7 +20,7 @@ class RobotEnv:
         self.planeId = p.loadURDF("plane.urdf")
         
         # Load robot model
-        robot_urdf_path = "assets/dog.urdf"  
+        robot_urdf_path = "environments/assets/dog.urdf"  
         self.robotId = p.loadURDF(robot_urdf_path, [0, 0, 0.60]) # Initial robot position
         
         # Get joint information
@@ -53,8 +53,8 @@ class RobotEnv:
         
 
         # Print identified joint information
-        print(f"找到 {len(self.joint_indices)} 个可控关节: {self.joint_names}")
-        print(f"脚关节索引: {self.foot_joint_indices}")
+        print(f"Found {len(self.joint_indices)} controllable joints: {self.joint_names}")
+        print(f"Foot joint indices: {self.foot_joint_indices}")
 
         # Define action and observation space dimensions
         self.action_dim = len(self.joint_indices)

@@ -214,7 +214,7 @@ def train_td3(env, total_timesteps=1000000, load_actor_path=None, load_critic1_p
     episode_steps = 0
 
     # Setup save directory and files
-    save_dir = "training_models"
+    save_dir = "models/training_models"
     os.makedirs(save_dir, exist_ok=True)
     reward_log_path = os.path.join(save_dir, "training_rewards.csv")
     
