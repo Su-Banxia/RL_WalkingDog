@@ -1,3 +1,5 @@
+## RL Part:
+
 `robot_env.py` - Contains model input/output definitions and reward function settings (reward function needs more tuning)
 
 `td3.py` - Implements TD3 algorithm for updating actor, critic1, and critic2 networks
