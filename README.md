@@ -5,9 +5,13 @@
 `start_train_td3.py` - Used for training. Can be executed in terminal with:
 
 ```
-python scripts\start_train_td3.py --train --timesteps 100000
+python -m scripts.start_train_td3 --train --timesteps 1000000 --load_actor final_actor.pth --load_critic1 final_critic1.pth --load_critic2 final_critic2.pth
 ```
 
 to start training. Other parameters can also be configured.
 
-After training completes, use test_robot.py to visualize the results in PyBullet
+After training completes, use `test_robot.py` to visualize the results in PyBullet:
+
+```
+python -m scripts.test_robot
+```
