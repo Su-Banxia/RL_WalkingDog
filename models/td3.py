@@ -141,8 +141,6 @@ class TD3:
         target_q1 = self.critic1_target(next_states, next_actions)
         target_q2 = self.critic2_target(next_states, next_actions)
         target_q = torch.min(target_q1, target_q2)
-        # target_q = rewards + (1 - dones) * self.gamma * target_q
-        # 修正后 - 正确的Bellman方程
         target_q = rewards + (1 - dones) * self.gamma * target_q.detach()
 
         # Update Critic 1
@@ -182,7 +180,7 @@ class TD3:
     def store_transition(self, state, action, reward, next_state, done):
         self.replay_buffer.push(state, action, reward, next_state, done)
 
-# 训练函数（改好版）
+
 def train_td3(env, total_timesteps=1000000, load_actor_path=None, load_critic1_path=None, load_critic2_path=None):
     obs_dim = env.obs_dim
     action_dim = env.action_dim
@@ -211,11 +209,11 @@ def train_td3(env, total_timesteps=1000000, load_actor_path=None, load_critic1_p
         print("No pre-trained model found, starting training from scratch.")
 
     # 训练统计
-    episode_rewards = deque(maxlen=100)        # 最近100个回合的奖励
-    episode_lengths = deque(maxlen=100)       # 最近100个回合的长度
+    episode_rewards = deque(maxlen=100)         # 最近100个回合的奖励
+    episode_lengths = deque(maxlen=100)         # 最近100个回合的长度
     timestep = 0
     episode = 0
-    best_avg_reward = -float('inf')           # 记录最佳平均奖励
+    best_avg_reward = -float('inf')             # 记录最佳平均奖励
     
     # 重置环境
     state = env.reset()
@@ -247,7 +245,6 @@ def train_td3(env, total_timesteps=1000000, load_actor_path=None, load_critic1_p
             dy = pos_y - env.target_y
             dist2d = np.sqrt(dx*dx + dy*dy)
             if dist2d < env.target_threshold:
-                # 只有在“进入目标区域”时才发这笔 bonus
                 reward += env.terminal_bonus
 
         # 存储经验转换
@@ -321,7 +318,7 @@ def train_td3(env, total_timesteps=1000000, load_actor_path=None, load_critic1_p
     print(f"✅ Training complete! Final models saved in {final_path}")
     return agent
 
-    # 评估函数（不添加噪声）
+# 评估函数（不添加噪声）
 def evaluate_td3(env, agent, episodes=10):
     total_rewards = 0
     for episode in range(episodes):

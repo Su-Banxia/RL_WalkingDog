@@ -1,10 +1,8 @@
-# start_train_td3.py
-
 import sys
 import os
 import argparse
-from robot_env import RobotEnv  # 导入你的机器人环境
-from td3 import train_td3, evaluate_td3, TD3  # 导入td3训练和评估函数
+from environments.robot_env import RobotEnv  
+from models.td3 import train_td3, evaluate_td3, TD3  
 import torch
 
 def main():

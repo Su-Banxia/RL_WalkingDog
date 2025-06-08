@@ -20,7 +20,7 @@ class RobotEnv:
         self.planeId = p.loadURDF("plane.urdf")
         
         # 加载机器人模型
-        robot_urdf_path = "dog.urdf"  
+        robot_urdf_path = "assets/dog.urdf"  
         self.robotId = p.loadURDF(robot_urdf_path, [0, 0, 0.60]) # 机器人初始位置
         
         # 获取关节信息
@@ -262,39 +262,28 @@ class RobotEnv:
 
         # —— 1. 躯干高度奖励 —— #
         K1 = 15.0
-        # upright_reward = np.exp(-K1 * (pos_z - upright_target_z) ** 2)
-        upright_reward = -K1 * (pos_z - upright_target_z)**2
-        # upright_reward = 5 * ((pos_z-min_height - 0.56) ** 2)
+        upright_reward = -K1 * (pos_z - upright_target_z) ** 2
 
         # —— 2. 躯干 pitch yaw roll “二次”奖励 —— #
         K2 = 1.0
         balance_reward = np.exp(-K2 * ((abs(pitch) + abs(roll) + abs(yaw)) ** 2))
 
         # —— 3. 身体速度惩罚 —— #
-        #vel_penalty = -K_vel * (vel_x ** 2 + vel_y ** 2 + vel_z ** 2)
-        # forward_reward = np.exp(-abs(vel_x - self.goal_speed))
-        # forward_reward = -abs(vel_x - self.goal_speed)
-        # forward_reward = np.exp(- (vel_x - 0.3)**2 )
         forward_reward = vel_x * 2.0
 
         # —— 4. 能量消耗惩罚 —— #
         K_e = 0.1
         energy_penalty = -K_e * np.sum( action ** 2)
-        # energy_penalty = np.exp(-K_e * np.sum(action**2))
 
         # —— 5. 偏离中心线惩罚 —— #
         K_p = 3.0
-        # path_penalty = -K_p * (pos_y ** 2)
         path_penalty = np.exp(-K_p * (pos_y ** 2))
 
-        # —— 6. 速度过慢惩罚 —— #
-        stagnation_penalty = -1.0 if abs(vel_x) < 0.05 else 0.0
-
-        # —— 7. 目标位置奖励 —— #
+        # —— 6. 目标位置奖励 —— #
         dx = pos_x - self.target_x
         dy = pos_y - self.target_y
         dist2d = np.sqrt(dx * dx + dy * dy)
-        k_dist = 0.3  # 衰减速率，可根据需求调整，例如 0.2、1.0 等
+        k_dist = 0.3  # 衰减速率
         distance_reward = 8.0 * np.exp(-k_dist * dist2d ** 2)
 
         reward = (
@@ -305,23 +294,23 @@ class RobotEnv:
             + 0.0625
             + energy_penalty
             # + path_penalty
-        )# #TODO: 调整各项奖励的权重
+        )
 
         return reward
     
     def _check_done(self, observation):
-        pos_x = observation[-1]   # 躯干 x 方向位置
-        pos_y = observation[0]    # 躯干 y 方向位置
-        pos_z = observation[1]
-        roll = observation[5]  # 躯干roll角度
-        pitch = observation[6]  # 躯干pitch角度
-        yaw = observation[7] # 躯干yaw角度
-        vel_x = observation[2]  # 躯干x方向速度
+        pos_x = observation[-1]     # 躯干 x 方向位置
+        pos_y = observation[0]      # 躯干 y 方向位置
+        pos_z = observation[1]      # 躯干 z 方向位置
+        roll = observation[5]       # 躯干roll角度
+        pitch = observation[6]      # 躯干pitch角度
+        yaw = observation[7]        # 躯干yaw角度
+        vel_x = observation[2]      # 躯干x方向速度
 
-        # —— 1. 如果步数已经到达最大值，则结束 —— #
+        # 步数已经到达最大值 #
         maximum_step = self.current_steps >= self.max_steps
 
-        # —— 2. 如果已经足够接近目标点，也结束 —— #
+        # 已经足够接近目标点 #
         dx = pos_x - self.target_x
         dy = pos_y - self.target_y
         dist2d = np.sqrt(dx * dx + dy * dy)
@@ -358,8 +347,6 @@ class RobotEnv:
             print(f"Reached target within {self.target_threshold}m, ending episode.")
 
         return fallen or stagnant or direction or maximum_step or reach_target
-        # return False
-    #TODO
     
     def close(self):
         p.disconnect()

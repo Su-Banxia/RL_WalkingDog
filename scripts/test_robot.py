@@ -1,7 +1,7 @@
 import numpy as np
 import pybullet as p
-from robot_env import RobotEnv
-from td3 import TD3, ActorNetwork, CriticNetwork
+from environments.robot_env import RobotEnv
+from models.td3 import TD3, ActorNetwork, CriticNetwork
 import torch
 
 def test_robot_with_trained_model(total_steps=5000, render=True, slow_down_factor=2.0):
@@ -13,9 +13,9 @@ def test_robot_with_trained_model(total_steps=5000, render=True, slow_down_facto
     obs_dim = env.obs_dim
     action_dim = env.action_dim
     agent = TD3(obs_dim, action_dim)
-    agent.actor.load_state_dict(torch.load('trained_models/'+'best_actor_ts171885_r1744.0.pth'))
-    agent.critic1.load_state_dict(torch.load('trained_models/'+'best_critic1_ts171885_r1744.0.pth'))
-    agent.critic2.load_state_dict(torch.load('trained_models/'+'best_critic2_ts171885_r1744.0.pth'))
+    agent.actor.load_state_dict(torch.load('models/'+'best_actor_ts171885_r1744.0.pth'))
+    agent.critic1.load_state_dict(torch.load('models/'+'best_critic1_ts171885_r1744.0.pth'))
+    agent.critic2.load_state_dict(torch.load('models/'+'best_critic2_ts171885_r1744.0.pth'))
     print("加载预训练模型成功！")
 
     # 记录初始位置和总距离
